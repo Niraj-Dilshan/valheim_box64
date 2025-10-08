@@ -3,24 +3,22 @@
 # This Dockerfile assumes you're building for linux/arm64. Use docker buildx to build on other hosts.
 # Example (on x86 host, using buildx emulation):
 # docker buildx build --platform linux/arm64 --load --build-arg BUILD_BOX86=true --build-arg BUILD_BOX64=true -t valheim_box64:local .
-FROM --platform=linux/arm64 debian:12.4-slim AS builder
+FROM debian:12.4-slim AS builder
 
-# Build-time flags: default to true since we target ARM64 builds by default
-ARG BUILD_BOX86=true
+# Build-time flags: default to build box64 (x86_64 emulator). box86 (x86->arm32) is disabled by default
+# because it often requires additional cross toolchains and causes dynarec-arm build issues on some ARM64 systems.
+ARG BUILD_BOX86=false
 ARG BUILD_BOX64=true
 ARG DEBIAN_FRONTEND=noninteractive
 WORKDIR /root
 
 # Install build deps only in builder to keep runtime slim
 RUN set -eux; \
-		dpkg --add-architecture armhf || true; \
-		apt-get update; \
-		apt-get install -y --no-install-recommends \
-				build-essential cmake git curl ca-certificates python3 pkg-config wget \
-				gcc g++ libglib2.0-dev libffi-dev libssl-dev; \
-		# install packages optionally required for some box86/box64 builds
-		apt-get install -y --no-install-recommends gcc-arm-linux-gnueabihf libc6:armhf || true; \
-		rm -rf /var/lib/apt/lists/*;
+	apt-get update; \
+	apt-get install -y --no-install-recommends \
+		build-essential cmake git curl ca-certificates python3 pkg-config wget \
+		gcc g++ libglib2.0-dev libffi-dev libssl-dev; \
+	rm -rf /var/lib/apt/lists/*;
 
 # Build box86 (32-bit x86 emulator) - optional
 RUN set -eux; \
