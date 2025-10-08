@@ -14,10 +14,14 @@ WORKDIR /root
 
 # Install build deps only in builder to keep runtime slim
 RUN set -eux; \
+	# enable armhf multiarch - required if we need to cross-build or provide armhf libs
+	dpkg --add-architecture armhf || true; \
 	apt-get update; \
 	apt-get install -y --no-install-recommends \
 		build-essential cmake git curl ca-certificates python3 pkg-config wget \
 		gcc g++ libglib2.0-dev libffi-dev libssl-dev; \
+	# install crossbuild essentials for armhf so box86's dynarec (ARM32) can be built if requested
+	apt-get install -y --no-install-recommends crossbuild-essential-armhf gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc6:armhf libc6-dev:armhf || true; \
 	rm -rf /var/lib/apt/lists/*;
 
 # Build box86 (32-bit x86 emulator) - optional
@@ -39,13 +43,16 @@ RUN set -eux; \
 
 # Build box64 (x86_64 emulator) - optional
 RUN set -eux; \
-		if [ "${BUILD_BOX64}" = "true" ]; then \
-			git clone --depth 1 https://github.com/ptitSeb/box64.git /root/box64; \
-			mkdir -p /root/box64/build; cd /root/box64/build; \
-			cmake .. -DARM_DYNAREC=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo; \
-			make -j"$(nproc)"; make install; \
-			rm -rf /root/box64; \
-		else \
+			if [ "${BUILD_BOX64}" = "true" ]; then \
+				git clone --depth 1 https://github.com/ptitSeb/box64.git /root/box64; \
+				mkdir -p /root/box64/build; cd /root/box64/build; \
+				# Explicitly target ARMv8 to ensure assembler understands system register instructions
+				export CFLAGS="-march=armv8-a -mcpu=native"; \
+				export CXXFLAGS="-march=armv8-a -mcpu=native"; \
+				cmake .. -DARM_DYNAREC=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_FLAGS="$CFLAGS" -DCMAKE_CXX_FLAGS="$CXXFLAGS"; \
+				make -j"$(nproc)"; make install; \
+				rm -rf /root/box64; \
+			else \
 			echo "Skipping box64 build (BUILD_BOX64=${BUILD_BOX64}). Set --build-arg BUILD_BOX64=true on ARM hosts to enable."; \
 		fi
 
